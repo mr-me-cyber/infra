@@ -65,4 +65,34 @@ Permission rules (key to avoid “Permission denied”)
 ~/.ssh must be 700 (drwx------)
 ~/.ssh/authorized_keys must be 600 (-rw-------)
 The user’s private key (id_rsa) must be 600
+
+**disk partition**
+fdisk /dev/sdc
+ n - p - 1 - w 
+ mkfs.ext4 /dev/sdc1
+mount - ro /dev/sdc1 /mnt
+mount | grep /mnt
+
+**enc file**
+cryptsetup luksFormat /----
+luksDump
+luksClose
+
+cryptsetup luksOpen /5d3a8e1b mycontainer
+# Enter password: 5d3a8e1b
+
+mount /dev/mapper/container /mnt
+cp -r - -
+
+| Option                 | What it does                               |
+| ---------------------- | ------------------------------------------ |
+| luksOpen <file> <name> | Decrypts and maps to /dev/mapper/<name>    |
+| --key-file <file>      | Use a keyfile instead of typing a password |
+| --readonly             | Open in read-only mode                     |
+| -v                     | Verbose output — shows what's happening    |
+
+
+
+
+
 The parent home directory must be owned by the correct user and not writable by others.
