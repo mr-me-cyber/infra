@@ -1,0 +1,310 @@
+# NOTES: chmod & ACL Permissions
+
+***
+
+## 1. Core Concept
+
+Linux file access is controlled by **two independent layers**. `chmod` is the classic fixed 3-slot system that has existed since the beginning of Unix. ACL (Access Control List) is an extension that allows fine-grained per-user and per-group rules on top of `chmod`.
+
+```
+LAYER 1: chmod bits          LAYER 2: ACL entries
+─────────────────────        ──────────────────────────────
+Always present               Optional (only if set)
+3 fixed slots                Unlimited named entries
+owner / group / others       any user / any group by name
+controlled by chmod          controlled by setfacl/getfacl
+```
+
+Both layers are checked by the kernel on every file access. Both must agree for access to be granted.
+
+***
+
+## 2. Key Terms
+
+| Term | Meaning |
+|---|---|
+| **owner** | The user who owns the file (`chown` changes this) |
+| **group** | The group assigned to the file (`chgrp` changes this) |
+| **others** | Everyone who is not the owner and not in the group |
+| **chmod bits** | The `rwxrwxrwx` or octal `755` permission string |
+| **ACL** | Access Control List — named per-user/group rules |
+| **setfacl** | Command to set/modify/remove ACL entries |
+| **getfacl** | Command to read/display all ACL entries on a file |
+| **mask** | The ACL ceiling — caps the maximum effective permission of ALL named entries |
+| **effective permission** | What a user can actually do = their ACL entry AND the mask |
+| **`+` in `ls -l`** | Indicator that ACL entries exist on the file |
+| **default ACL** | ACL inherited by new files created inside a directory |
+
+***
+
+## 3. The Mental Model
+
+```
+chmod — 3 FIXED SLOTS                ACL — UNLIMITED NAMED SLOTS
+──────────────────────────────        ────────────────────────────────────
+  owner  │  group  │  others          user::rw-       ← owner
+  rw-    │  r--    │  r--             group::r--      ← owning group
+                                      user:alice:rwx  ← named user
+  Only 3 buckets, no exceptions       user:bob:r-x    ← named user
+                                      group:dev:rw-   ← named group
+                                      mask::rw-       ← ceiling
+                                      other::r--      ← everyone else
+```
+
+***
+
+## 4. chmod — Full Breakdown
+
+### Symbolic Mode
+```bash
+chmod u+x file        # add execute for owner (u=user/owner)
+chmod g-w file        # remove write from group
+chmod o=r file        # set others to read only (= replaces completely)
+chmod a+r file        # add read for all (a = all: u+g+o)
+chmod u+x,g-w file    # multiple changes at once
+```
+
+### Octal Mode
+```
+Each digit = one slot (owner / group / others)
+r = 4,  w = 2,  x = 1
+
+chmod 755 file   →  rwxr-xr-x   owner:rwx  group:r-x  others:r-x
+chmod 644 file   →  rw-r--r--   owner:rw-  group:r--  others:r--
+chmod 600 file   →  rw-------   owner:rw-  group:---  others:---
+chmod 000 file   →  ---------   all denied
+chmod 777 file   →  rwxrwxrwx   all allowed (dangerous)
+```
+
+### Common chmod options
+| Option | Meaning |
+|---|---|
+| `-R` | Recursive — apply to all files in a directory |
+| `-v` | Verbose — show each file changed |
+| `-c` | Like `-v` but only shows files that changed |
+| `--reference=f1 f2` | Copy chmod bits from f1 to f2 |
+
+***
+
+## 5. ACL Entry Anatomy
+
+```
+type : name : permissions
+  │      │        │
+  │      │        └── r / w / x / - (same bits as chmod)
+  │      └────────── username or groupname (blank = owner or others)
+  └───────────────── u (user)  g (group)  o (others)  m (mask)
+
+Examples:
+  u:alice:rwx     → alice gets full access
+  u:bob:r-x       → bob gets read + execute only
+  u:bob:r--       → bob gets read only
+  g:devteam:rw-   → group devteam gets read + write
+  m::rw-          → mask ceiling = rw- maximum
+  o::---          → all others denied
+```
+
+***
+
+## 6. setfacl — All Options
+
+```bash
+setfacl -m u:alice:rwx file       # MODIFY — add or update entry for alice
+setfacl -m g:dev:r-- file         # MODIFY — add or update entry for group dev
+setfacl -x u:alice file           # REMOVE — delete alice's entry only
+setfacl -b file                   # WIPE ALL — remove every ACL entry
+setfacl -R -m u:alice:r-x dir/   # RECURSIVE — apply to all files in dir
+setfacl -m d:u:alice:rwx dir/    # DEFAULT — new files in dir inherit this
+setfacl -k dir/                   # REMOVE all default ACL entries only
+setfacl -m m::r-- file            # SET MASK manually
+getfacl file                      # READ — show all ACL entries
+getfacl f1 | setfacl --set-file=- f2   # COPY ACL from f1 to f2
+```
+
+***
+
+## 7. The Mask — The Hidden Ceiling
+
+The mask is the most misunderstood part of ACL. It caps the maximum effective permission for all **named** entries (not the owner, not others — only named user/group entries).
+
+```
+alice's entry:   r w x
+mask:            r w -   ← AND operation
+                 ─────
+effective:       r w -   ← alice can read and write, NOT execute
+```
+
+### How chmod secretly rewrites the mask:
+
+```bash
+# File has ACL: alice:rwx, mask::rwx
+chmod 644 file
+# → owner becomes rw-, group becomes r--, others become r--
+# → mask is silently set to r-- (the group bits become the new mask)
+
+getfacl file
+# user:alice:rwx   #effective:r--   ← alice blocked without warning!
+# mask::r--
+```
+
+This is the **most dangerous side effect** — running `chmod` after `setfacl` can silently block named ACL users without any error.
+
+***
+
+## 8. `ls -l` — Spotting ACL
+
+```bash
+ls -l file.txt
+
+# Without ACL:
+-rw-r--r--  1 root root 512 May 18 file.txt
+
+# With ACL:
+-rw-r--r--+ 1 root root 512 May 18 file.txt
+            ^
+            └── + means ACL entries exist. Run getfacl to see them.
+```
+
+***
+
+## 9. Two-Layer Access Check
+
+```
+User tries to access file.txt
+          │
+          ▼
+Does user have a named ACL entry?
+    YES → use that entry AND mask → effective permission
+    NO  → fall through to chmod bits (owner / group / others)
+          │
+          ▼
+Is access allowed?
+    YES → granted ✅
+    NO  → Permission denied ❌
+    (root always bypasses both layers)
+```
+
+***
+
+## 10. Exam-Style Command Examples
+
+### Give operator read-only via ACL (Exercise 13)
+```bash
+setfacl -m u:operator:r-- /root/199306.txt
+getfacl /root/199306.txt    # verify
+```
+
+### Ensure NO user has access, remove all ACL entries (Exercise 7)
+```bash
+setfacl -b /root/199299.key      # wipe all ACL entries
+chmod 000 /root/199299.key       # zero all chmod bits
+ls -l /root/199299.key           # should show ----------
+getfacl /root/199299.key         # should show no named entries
+```
+
+### Give a user read and execute only
+```bash
+setfacl -m u:alice:r-x /root/script.sh
+```
+
+### Give a group full access
+```bash
+setfacl -m g:devteam:rwx /root/project/
+```
+
+### Remove one specific user's ACL entry
+```bash
+setfacl -x u:bob /root/file.txt
+# bob's entry gone — falls back to "others" chmod bits
+```
+
+### Copy ACL from one file to another
+```bash
+getfacl source.txt | setfacl --set-file=- target.txt
+```
+
+***
+
+## ⚠️ 11. Things You Got Mixed Up — Corrections
+
+### ❌ Mistake 1: "Deleting ACL entries alone is enough to block all access"
+**Wrong.** `setfacl -b` only removes Layer 2 (ACL entries). The chmod bits (Layer 1) remain. The owner and group can still access the file via their chmod bits.
+
+**✅ Correct:** You need both:
+```bash
+setfacl -b file       # remove ACL entries
+chmod 000 file        # zero chmod bits too
+```
+
+***
+
+### ❌ Mistake 2: "chmod 000 alone blocks ACL users too"
+**Partially wrong — right outcome, wrong reasoning, fragile state.**
+
+`chmod 000` zeroes the mask, which blocks ACL users via the AND operation. So effectively yes, they can't access the file. BUT — the ACL entries are still sitting there. If anyone later runs `chmod 644`, the mask is restored and the ACL users suddenly get access back without anyone explicitly granting it.
+
+**✅ Correct:** `chmod 000` blocks access but leaves a ticking time bomb. Always pair it with `setfacl -b` for a truly clean state.
+
+***
+
+### ❌ Mistake 3: Thinking chmod and ACL are the same system
+**Wrong.** They are two completely independent systems. `chmod` sets the base bits. `setfacl` sets named entries. A file always has chmod bits. ACL entries are optional.
+
+**✅ Correct mental model:**
+```
+chmod  → the lock built into the door (always there)
+ACL    → extra padlocks you can add on top (optional)
+Both must be open for access to be granted
+```
+
+***
+
+### ❌ Mistake 4: Thinking named ACL users bypass chmod
+**Wrong.** Named ACL entries do NOT override the mask. The mask is driven by chmod's group bits. Setting `u:alice:rwx` doesn't mean alice always gets `rwx` — if the mask is `r--`, alice's effective is `r--`.
+
+***
+
+## 12. chmod vs ACL — Quick Comparison Table
+
+| Task | chmod | ACL |
+|---|---|---|
+| Give owner rw, group r, others r | `chmod 644 file` | not needed |
+| Give specific user r-x | ❌ impossible | `setfacl -m u:alice:r-x file` |
+| Give 3 different groups access | ❌ only 1 group | `setfacl -m g:g1:rwx -m g:g2:r-- file` |
+| Block one specific user | ❌ impossible | `setfacl -m u:bob:--- file` |
+| Apply recursively | `chmod -R 755 dir/` | `setfacl -R -m u:alice:r-x dir/` |
+| View all permissions | `ls -l` | `getfacl file` |
+| Remove all special entries | — | `setfacl -b file` |
+| Wipe everything and deny all | `chmod 000 file` | `setfacl -b` + `chmod 000` |
+
+***
+
+## 13. Quick Reference Cheat Sheet
+
+```bash
+# READ
+getfacl file                          # show all ACL entries
+
+# ADD / MODIFY
+setfacl -m u:USERNAME:rwx file        # full access for user
+setfacl -m u:USERNAME:r-- file        # read only for user
+setfacl -m u:USERNAME:r-x file        # read + execute for user
+setfacl -m g:GROUPNAME:rw- file       # read + write for group
+
+# REMOVE
+setfacl -x u:USERNAME file            # remove one user's entry
+setfacl -b file                       # remove ALL ACL entries
+
+# RECURSIVE
+setfacl -R -m u:USERNAME:r-x dir/    # apply to whole directory
+
+# DEFAULT (inherited by new files)
+setfacl -m d:u:USERNAME:rwx dir/     # set default ACL on directory
+
+# FULL LOCKDOWN
+setfacl -b file && chmod 000 file     # deny everyone, clean state
+
+# VERIFY
+ls -l file                            # check for + sign
+getfacl file                          # see all entries + effective perms
+```
