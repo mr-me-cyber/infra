@@ -41,12 +41,25 @@ ls /mnt
 cp /mnt/?? /root
 
 openssl aes-128-cbc -d -K -iv -in -out
+openssl rsa -in keyfile -pubout > keyfile.pub
 
 openssl dgst -sha256 -sign (private)  -out   file
 openssl dgst -sha256 -verify public  -signature (.sign file)   file
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2014 -out 
 rsa -noout -text -in
+
+# Step 1: Copy private key to file (already done)
+
+# Step 2: Extract public key (optional for decryption, but fine to have)
+openssl rsa -in keyfile -pubout > keyfile.pub
+
+# Step 3 CORRECTED: Decrypt using the PRIVATE key
+openssl rsautl -decrypt -in /root/17099.enc -inkey keyfile > /root/17099.txt
+
+
+
+
 setfacl -m u:operator:r file
 
 fdisk /dev/sdc
