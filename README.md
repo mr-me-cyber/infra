@@ -8,18 +8,19 @@ find <dir> down
 -perm /1000
 -not -user bob
 
-openssl dgst -sha256 -verify  -signature //
 
-losetup -f /efajh2332
-lsblk -f
-cryptsetup luksOpen /dev/loop0 loop0
-
-mount /dev/mapper/loop0 /mnt
-cp /mnt/* /root
 
 setfacl -m+ -b all -x -
 setfacl -m u:operator:rw mess.txt
 setfacl -b mess.txt
+setfacl -m u:operator:r file
+setfacl -x u:bob /root/199306.txt
+setfacl -b /root/199306.txt
+after to ensure nobodyu can access file
+chmod 000 /root/199299.key
+setfacl -m u:alice:r-x /root/script.sh
+setfacl -m m::r-- file.tx
+
 
 chown u:g .txt
 
@@ -27,45 +28,97 @@ dd if= of= bs= count=
 
 getfacl
 
-cryptsetup luksFormat /dev/sdc
-cryptsetup luksOpen /dev/sdc x
+cryptsetup luksFormat /dev/sdc1
+cryptsetup luksOpen /dev/sdc1 x
 mk.xfs /dev/mapper/x
 umount /mnt/
 mount /dev/mapper/x /mnt
-fdisk /dev/sdc
 
-lusetup -f --show /af90u09ua
+/////////////////////////////////////////////
+\n 
+
+
+Layer 0:  Regular file on disk
+          /5d3a8e1b  (40MB file, contains LUKS header + encrypted data)
+               │
+               │  losetup -f /5d3a8e1b
+               ▼
+Layer 1:  Loop device  ← "pretend this file is a disk"
+          /dev/loop0
+               │
+               │  cryptsetup luksOpen /dev/loop0 mycontainer
+               ▼
+Layer 2:  Mapper device  ← "decrypt everything passing through here"
+          /dev/mapper/mycontainer
+               │
+               │  mount /dev/mapper/mycontainer /mnt
+               ▼
+Layer 3:  Mounted filesystem
+          /mnt/  ← you see your files here normally
+
+
+What do you have?
+        │
+        ├─── A real partition (/dev/sdb1, /dev/sdc)?
+        │           │
+        │           ├── Is it LUKS encrypted?
+        │           │       ├── YES → cryptsetup luksOpen → /dev/mapper/x → mount
+        │           │       └── NO  → mkfs / mount directly
+        │           │
+        │
+        └─── A plain FILE (/5d3a8e1b, disk.img)?
+                    │
+                    ├── Just need to format/mount it?
+                    │       └── losetup → /dev/loop0 → mkfs → mount /dev/loop0
+                    │
+                    └── It's LUKS encrypted?
+                            └── losetup → /dev/loop0
+                                    └── cryptsetup luksOpen → /dev/mapper/x
+                                                └── mount /dev/mapper/x
+
+
+
+fdisk /dev/sdc --not here, when creating new partition on disk
+
+
+losetup -f --show /af90u09ua
 cryptsetup luksOpen /dev/loop0 loop
 mount /dev/mapper/loop0 /mnt
 ls /mnt
 cp /mnt/?? /root
 
+mount | grep /mnt 
+
+
+
+losetup -f /efajh2332
+lsblk -f
+cryptsetup luksOpen /dev/loop0 container
+
+mount /dev/mapper/container /mnt
+cp /mnt/* /root
+
+
+fdisk /dev/sdc
+n p w
+mkfs.ext2 /dev/sdc1
+mount -o ro /dev/sdc1 /mnt
+
 openssl aes-128-cbc -d -K -iv -in -out
 openssl rsa -in keyfile -pubout > keyfile.pub
 
+
+openssl dgst -sha256 -verify  -signature //
 openssl dgst -sha256 -sign (private)  -out   file
 openssl dgst -sha256 -verify public  -signature (.sign file)   file
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2014 -out 
 rsa -noout -text -in
 
-# Step 1: Copy private key to file (already done)
 
-# Step 2: Extract public key (optional for decryption, but fine to have)
 openssl rsa -in keyfile -pubout > keyfile.pub
-
-# Step 3 CORRECTED: Decrypt using the PRIVATE key
 openssl rsautl -decrypt -in /root/17099.enc -inkey keyfile > /root/17099.txt
-
-
-
-
-setfacl -m u:operator:r file
-
-fdisk /dev/sdc
-n p w
-mk.ext2 /dev/sdc1
-mount -o ro /dev/sdc1 /mnt
+openssl pkeyutl -decrypt -in /root/17099.enc -inkey keyfile -out /root/17099.txt
 
 
 find /target/directory -type f ! -user root -delete
