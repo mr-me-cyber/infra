@@ -40,10 +40,10 @@ mount /dev/mapper/loop0 /mnt
 ls /mnt
 cp /mnt/?? /root
 
-openssl aes-128-cbc -d -K -iv -in -ouy
+openssl aes-128-cbc -d -K -iv -in -out
 
-openssl dgst -sha256 -sign private  -out   file
-openssl dgst -sha256 -verify  -signature   file
+openssl dgst -sha256 -sign (private)  -out   file
+openssl dgst -sha256 -verify public  -signature (.sign file)   file
 
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2014 -out 
 rsa -noout -text -in
