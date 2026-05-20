@@ -24,7 +24,7 @@ setfacl -m m::r-- file.tx
 
 chown u:g .txt
 
-dd if= of= bs= count=
+dd if=/dev/zero of= bs= count=
 
 getfacl
 
@@ -118,7 +118,11 @@ rsa -noout -text -in
 
 openssl rsa -in keyfile -pubout > keyfile.pub
 openssl rsautl -decrypt -in /root/17099.enc -inkey keyfile > /root/17099.txt
+
 openssl pkeyutl -decrypt -in /root/17099.enc -inkey keyfile -out /root/17099.txt
+
+openssl pkeyutl -decrypt -inkey server.key \
+  -in encrypted.enc -out decrypted.txt
 
 
 find /target/directory -type f ! -user root -delete
@@ -184,7 +188,7 @@ cat > kk
 ctd
 
 ssh-keygen -y -f kk > .ssh/authorized_keys
-
+vim /etc/ssh/sshd_config
 
 ssh-keygen // to create .ssh/id_rsa
 -- tio allow user login as root, use ssh-copy-id on the user u want to allow to login as root
@@ -202,6 +206,33 @@ sudo chmod 700 /root/.ssh
 # Append alice's public key
 cat /home/alice/.ssh/id_ed25519.pub | sudo tee -a /root/.ssh/authorized_keys
 sudo chmod 600 /root/.ssh/authorized_keys
+
+#certs
+openssl genrsa -out 2048
+openssl rsa -in -pubout -out
+--csr
+openssl req -new -key ca.key -out ca.csr
+openssl req -in ca.csr -text -noout
+
+
+
+-self-signed crt// CA
+
+openssl req -x509 -new -key ca.key \
+  -out ca.crt \
+  -days 3650 \
+  -subj "/CN=MyRootCA"
+The combination of -x509 + -new (without an existing CSR) tells openssl you're creating a root-level certificate. OpenSSL automatically adds CA:TRUE to the Basic Constraints extension.
+//self signed cert
+openssl -x509 -req -signkey ca.key -in ca.csr -out ca.crt -days 365
+
+--issuing a ca signed cert, create a server key and csr, then
+openssl x509 -req -in server.csr -CA ca.crt -CAcreateserial -CAkey ca.key -out server.crt -days 365 -sha256
+
+firewall-cmd --zone=work --add-port=8080/tcp --permanent
+firewall-cmd --reload
+
+
 
 
 The parent home directory must be owned by the correct user and not writable by others.
