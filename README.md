@@ -1,6 +1,6 @@
 # infra
 
-ssh-keygen
+ssh-keygen \n
 ssh-copy-id root@localhost
 
 exit
