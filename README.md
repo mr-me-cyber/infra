@@ -1,6 +1,6 @@
 # infra
 
-ssh-keygen \n
+ssh-keygen 
 ssh-copy-id root@localhost
 
 exit
@@ -199,11 +199,11 @@ ssh-copy-id root@localhost
 copy their public key to the roots authorized_keys file
 //once successful, you can login using *ssh root@localhost*
 
-# Create .ssh directory if missing
+// Create .ssh directory if missing
 sudo mkdir -p /root/.ssh
 sudo chmod 700 /root/.ssh
 
-# Append alice's public key
+ //Append alice's public key
 cat /home/alice/.ssh/id_ed25519.pub | sudo tee -a /root/.ssh/authorized_keys
 sudo chmod 600 /root/.ssh/authorized_keys
 
@@ -223,10 +223,10 @@ openssl req -x509 -new -key ca.key \
   -days 3650 \
   -subj "/CN=MyRootCA"
 The combination of -x509 + -new (without an existing CSR) tells openssl you're creating a root-level certificate. OpenSSL automatically adds CA:TRUE to the Basic Constraints extension.
-//self signed cert
+//self signed cert \\//
 openssl -x509 -req -signkey ca.key -in ca.csr -out ca.crt -days 365
 
---issuing a ca signed cert, create a server key and csr, then
+--issuing a ca signed cert, create a server key and csr, then // 
 openssl x509 -req -in server.csr -CA ca.crt -CAcreateserial -CAkey ca.key -out server.crt -days 365 -sha256
 
 firewall-cmd --zone=work --add-port=8080/tcp --permanent
